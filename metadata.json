@@ -1,0 +1,6 @@
+{
+  "name": "Fishing Forecast",
+  "description": "Interactive coastal and shore jigging fishing forecast with Open-Meteo weather, swell, Solunar periods, and fishing score algorithm",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,1456 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Fishing Forecast - Shore Jigging & Coastal Marine Predictor</title>
+  
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            ocean: {
+              900: '#041324',
+              800: '#0a233f',
+              700: '#0f385c',
+              600: '#144f80',
+              500: '#1a6ca4',
+              400: '#2b8ecc',
+              300: '#5ab2e6',
+              100: '#d0ebfa',
+            },
+            jig: {
+              gold: '#f59e0b',
+              glow: '#10b981',
+              danger: '#ef4444',
+              cyan: '#06b6d4',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    * {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      box-sizing: border-box;
+    }
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: #041324;
+      color: #f1f5f9;
+    }
+    #map {
+      width: 100%;
+      height: 100%;
+      z-index: 10;
+    }
+    .leaflet-bar a {
+      background-color: #0a233f !important;
+      color: #38bdf8 !important;
+      border-bottom: 1px solid #1e3a5f !important;
+    }
+    .leaflet-bar a:hover {
+      background-color: #0f385c !important;
+    }
+    /* Custom pulsing pin icon */
+    .custom-fishing-pin {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pin-pulse {
+      position: absolute;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(6, 182, 212, 0.4);
+      animation: pulse 1.8s infinite ease-out;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.6); opacity: 0.9; }
+      100% { transform: scale(2.2); opacity: 0; }
+    }
+    .pin-body {
+      position: relative;
+      z-index: 2;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #06b6d4 0%, #0284c7 100%);
+      border: 2.5px solid #ffffff;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+    }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e3a5f;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="bg-ocean-900 text-slate-100 flex flex-col h-full w-full">
+
+  <!-- TOP HEADER -->
+  <header class="relative z-30 bg-ocean-900/90 backdrop-blur-md border-b border-ocean-700/60 px-4 py-2.5 flex items-center justify-between shadow-lg">
+    <div class="flex items-center space-x-2.5">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center shadow-md shadow-cyan-500/20">
+        <i data-lucide="anchor" class="w-5 h-5 text-white"></i>
+      </div>
+      <div>
+        <h1 class="font-bold text-sm sm:text-base tracking-wide flex items-center gap-1.5 text-cyan-300">
+          Fishing Forecast
+          <span class="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-cyan-900/80 text-cyan-300 border border-cyan-700">Shore Jigging</span>
+        </h1>
+        <p class="text-[11px] text-slate-400">Πρόγνωση & Αλγόριθμος Ψαρέματος</p>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="flex items-center space-x-2">
+      <!-- Preset Spot Menu -->
+      <div class="relative">
+        <button id="presetBtn" class="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-ocean-800 hover:bg-ocean-700 border border-ocean-700 text-slate-200 transition">
+          <i data-lucide="map-pin" class="w-3.5 h-3.5 text-cyan-400"></i>
+          <span class="hidden sm:inline">Σημεία</span>
+          <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400"></i>
+        </button>
+        <div id="presetMenu" class="hidden absolute right-0 mt-2 w-56 bg-ocean-800/95 backdrop-blur-xl border border-ocean-700 rounded-xl shadow-2xl p-2 z-50 text-xs">
+          <p class="text-[11px] text-slate-400 font-semibold px-2 py-1 uppercase tracking-wider">Δημοφιλή Παράκτια Σημεία</p>
+          <div class="space-y-1 mt-1 max-h-60 overflow-y-auto">
+            <button onclick="selectSpot(37.6500, 24.0250, 'Σούνιο (Αττική)')" class="w-full text-left px-2 py-1.5 rounded hover:bg-ocean-700 text-slate-200 flex justify-between items-center">
+              <span>Ακρωτήριο Σούνιο</span> <span class="text-[10px] text-cyan-400">Αττική</span>
+            </button>
+            <button onclick="selectSpot(37.9500, 24.5800, 'Κάβο Ντόρο (Κάφηρεας)')" class="w-full text-left px-2 py-1.5 rounded hover:bg-ocean-700 text-slate-200 flex justify-between items-center">
+              <span>Κάβο Ντόρο</span> <span class="text-[10px] text-cyan-400">Εύβοια</span>
+            </button>
+            <button onclick="selectSpot(36.3850, 22.4830, 'Ακρωτήριο Ταίναρο (Μάνη)')" class="w-full text-left px-2 py-1.5 rounded hover:bg-ocean-700 text-slate-200 flex justify-between items-center">
+              <span>Ακρ. Ταίναρο</span> <span class="text-[10px] text-cyan-400">Μάνη</span>
+            </button>
+            <button onclick="selectSpot(36.4400, 23.2000, 'Κάβο Μαλέας (Λακωνία)')" class="w-full text-left px-2 py-1.5 rounded hover:bg-ocean-700 text-slate-200 flex justify-between items-center">
+              <span>Κάβο Μαλέας</span> <span class="text-[10px] text-cyan-400">Λακωνία</span>
+            </button>
+            <button onclick="selectSpot(39.9200, 23.7500, 'Παλιούρι (Κασσάνδρα)')" class="w-full text-left px-2 py-1.5 rounded hover:bg-ocean-700 text-slate-200 flex justify-between items-center">
+              <span>Παλιούρι</span> <span class="text-[10px] text-cyan-400">Χαλκιδική</span>
+            </button>
+            <button onclick="selectSpot(35.6500, 23.7000, 'Ακρωτήριο Σπάθα (Χανιά)')" class="w-full text-left px-2 py-1.5 rounded hover:bg-ocean-700 text-slate-200 flex justify-between items-center">
+              <span>Ακρ. Σπάθα</span> <span class="text-[10px] text-cyan-400">Κρήτη</span>
+            </button>
+            <button onclick="selectSpot(38.3000, 20.7000, 'Ακρωτήριο Λευκάτα (Λευκάδα)')" class="w-full text-left px-2 py-1.5 rounded hover:bg-ocean-700 text-slate-200 flex justify-between items-center">
+              <span>Κάβος Λευκάτα</span> <span class="text-[10px] text-cyan-400">Ιόνιο</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Locate GPS button -->
+      <button id="locateBtn" title="Η τοποθεσία μου" class="p-2 rounded-lg bg-ocean-800 hover:bg-ocean-700 border border-ocean-700 text-cyan-400 transition">
+        <i data-lucide="crosshair" class="w-4 h-4"></i>
+      </button>
+
+      <!-- Info/Help modal trigger -->
+      <button id="infoBtn" title="Πληροφορίες Αλγορίθμου" class="p-2 rounded-lg bg-ocean-800 hover:bg-ocean-700 border border-ocean-700 text-slate-300 transition">
+        <i data-lucide="help-circle" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN WRAPPER (MAP + FLOATING CARDS) -->
+  <div class="relative flex-1 w-full h-full overflow-hidden">
+    <!-- LEAFLET MAP -->
+    <div id="map"></div>
+
+    <!-- MAP OVERLAY CONTROLS (Top Floating Bar) -->
+    <div class="absolute top-3 left-3 right-3 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+      <!-- Search Input with Geocoding -->
+      <div class="flex items-center bg-ocean-900/95 backdrop-blur-md rounded-xl border border-cyan-500/50 p-1 shadow-2xl pointer-events-auto max-w-xs sm:max-w-sm w-full">
+        <i data-lucide="search" class="w-4 h-4 text-cyan-400 ml-2 mr-1.5 flex-shrink-0"></i>
+        <input id="searchInput" type="text" placeholder="Αναζήτηση ακτής (π.χ. Σούνιο, Λαύριο, Πάτρα)..." 
+          class="bg-transparent text-xs text-slate-100 placeholder-slate-400 px-1.5 py-1.5 focus:outline-none w-full" />
+        <button id="searchBtn" onclick="searchCurrentQuery()" class="px-2.5 py-1 bg-cyan-600 hover:bg-cyan-500 rounded-lg text-white text-xs font-semibold flex items-center gap-1 transition flex-shrink-0">
+          <span>Βρες</span>
+        </button>
+      </div>
+
+      <!-- Quick Floating Map Toggle Button -->
+      <div class="pointer-events-auto flex items-center gap-2">
+        <button id="floatingMapToggleBtn" onclick="toggleForecastCard()" class="bg-ocean-900/95 hover:bg-ocean-800 text-cyan-300 border border-cyan-500/50 px-3 py-1.5 rounded-xl shadow-xl text-xs font-bold flex items-center gap-1.5 transition">
+          <i data-lucide="map" class="w-3.5 h-3.5 text-cyan-400"></i>
+          <span id="floatingMapToggleText">Πλήρης Χάρτης</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Quick Hint Tag -->
+    <div class="absolute top-16 left-3 z-20 pointer-events-none">
+      <div class="bg-ocean-900/85 backdrop-blur-md rounded-lg border border-ocean-700/60 px-3 py-1.5 shadow-md flex items-center gap-2 max-w-[280px]">
+        <i data-lucide="info" class="w-3.5 h-3.5 text-cyan-400 flex-shrink-0"></i>
+        <span class="text-[11px] text-slate-300">Πάτησε οπουδήποτε στην ακτή για να τοποθετήσεις πινέζα.</span>
+      </div>
+    </div>
+
+    <!-- LOADING SPINNER OVERLAY -->
+    <div id="loadingOverlay" class="hidden absolute inset-0 z-40 bg-ocean-900/60 backdrop-blur-sm flex items-center justify-center">
+      <div class="bg-ocean-800/95 border border-cyan-500/40 rounded-2xl p-5 shadow-2xl flex flex-col items-center gap-3">
+        <div class="relative w-12 h-12">
+          <div class="absolute inset-0 rounded-full border-4 border-cyan-500/20"></div>
+          <div class="absolute inset-0 rounded-full border-4 border-cyan-400 border-t-transparent animate-spin"></div>
+          <div class="absolute inset-0 flex items-center justify-center text-cyan-300">
+            <i data-lucide="compass" class="w-5 h-5"></i>
+          </div>
+        </div>
+        <p class="text-xs font-semibold text-slate-200">Ανάκτηση δεδομένων Open-Meteo & Ανάλυση...</p>
+        <span class="text-[10px] text-slate-400">Καιρός, Πίεση, Κύμα, Σελήνη</span>
+      </div>
+    </div>
+
+    <!-- MINI FLOATING BOTTOM BAR (Shown when forecast card is collapsed) -->
+    <div id="miniForecastBar" class="hidden absolute bottom-3 left-3 right-3 z-30 flex items-center justify-between bg-ocean-900/95 backdrop-blur-xl border border-cyan-500/60 rounded-2xl p-2.5 px-3.5 shadow-2xl transition-all">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping flex-shrink-0"></span>
+        <div class="truncate">
+          <div class="flex items-center gap-1.5">
+            <span id="miniSpotName" class="text-xs font-bold text-white truncate">Επιλεγμένο Σημείο</span>
+            <span id="miniTargetBadge" class="text-[10px] font-semibold text-cyan-300 bg-cyan-950/80 px-1.5 py-0.5 rounded border border-cyan-800 flex-shrink-0">🎯 18:00</span>
+          </div>
+          <p id="miniCoords" class="text-[10px] text-slate-400 truncate">37.6500° N, 24.0250° E (Παράκτια Ζώνη)</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 flex-shrink-0 ml-2">
+        <span id="miniScoreBadge" class="inline-block text-xs font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">85%</span>
+        <button onclick="toggleForecastCard(false)" class="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-lg flex items-center gap-1 transition">
+          <span>Πρόγνωση</span>
+          <i data-lucide="chevron-up" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- BOTTOM FORECAST DRAWER / POPUP CARD -->
+    <div id="forecastDrawer" class="absolute bottom-0 left-0 right-0 z-30 max-h-[85vh] flex flex-col transition-all duration-300">
+      <!-- DRAWER HEADER CONTROLS (Always visible at top of card) -->
+      <div class="flex items-center justify-between px-4 pb-1 select-none">
+        <button onclick="toggleForecastCard(true)" class="bg-ocean-800/90 hover:bg-ocean-700 border border-ocean-600 px-3 py-1 rounded-full shadow-lg text-slate-200 hover:text-cyan-300 flex items-center gap-1 text-[11px] transition">
+          <i data-lucide="map" class="w-3.5 h-3.5 text-cyan-400"></i>
+          <span>Προβολή Χάρτη</span>
+        </button>
+
+        <button id="toggleDrawerBtn" onclick="toggleForecastCard(true)" class="bg-ocean-800/90 hover:bg-ocean-700 border border-cyan-600/50 px-4 py-1 rounded-full shadow-lg text-slate-100 hover:text-cyan-300 flex items-center gap-1.5 text-xs font-semibold transition">
+          <span id="drawerStateText">Απόκρυψη Κάρτας</span>
+          <i id="drawerChevron" data-lucide="chevron-down" class="w-4 h-4 text-cyan-400"></i>
+        </button>
+
+        <button onclick="toggleForecastCard(true)" class="bg-ocean-800/90 hover:bg-rose-900/60 border border-ocean-600 w-7 h-7 rounded-full shadow-lg text-slate-400 hover:text-rose-300 flex items-center justify-center transition" title="Κλείσιμο Κάρτας">
+          <i data-lucide="x" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+
+      <!-- MAIN CARD CONTENT CONTAINER -->
+      <div class="bg-ocean-900/95 backdrop-blur-xl border-t border-ocean-700/80 rounded-t-3xl shadow-2xl p-4 sm:p-5 overflow-y-auto space-y-4">
+        
+        <!-- HEADER ROW: Spot Title, Lat/Lng & Fishing Verdict Score -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-ocean-700/60 pb-3.5">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
+              <h2 id="spotName" class="font-bold text-base sm:text-lg text-white">Επιλεγμένο Σημείο</h2>
+            </div>
+            <p id="spotCoords" class="text-xs text-slate-400 mt-0.5">37.6500° N, 24.0250° E (Παράκτια Ζώνη)</p>
+          </div>
+
+          <!-- Fishing Score Badge & Verdict -->
+          <div class="flex items-center gap-3 bg-ocean-800/80 border border-ocean-700 rounded-2xl p-2.5 sm:px-4">
+            <div class="relative w-12 h-12 flex items-center justify-center">
+              <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                <path class="text-ocean-700" stroke-width="3.5" stroke="currentColor" fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                <path id="scoreCircle" class="text-cyan-400 transition-all duration-700 ease-out" stroke-dasharray="85, 100" stroke-width="3.5" stroke-linecap="round" stroke="currentColor" fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+              </svg>
+              <div class="absolute inset-0 flex items-center justify-center">
+                <span id="scoreNumber" class="text-xs font-black text-white">85%</span>
+              </div>
+            </div>
+            <div>
+              <span id="verdictBadge" class="inline-block text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                Εξαιρετική Ιδέα
+              </span>
+              <p id="verdictSubtitle" class="text-[11px] text-slate-300 mt-0.5">Ιδανικές συνθήκες για Shore Jigging!</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- TARGET TIME SELECTOR / SPOT HOPPING MODE -->
+        <div class="bg-ocean-800/80 border border-cyan-700/60 rounded-2xl p-3 space-y-2">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <div class="w-7 h-7 rounded-lg bg-cyan-600/30 border border-cyan-500/40 flex items-center justify-center text-cyan-300">
+                <i data-lucide="crosshair" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <span class="text-xs font-bold text-white flex items-center gap-1.5">
+                  Στοχευμένη Ώρα Ψαρέματος:
+                  <span id="targetLockBadge" class="text-cyan-300 font-black">18:00 (Κλειδωμένη)</span>
+                </span>
+                <p class="text-[10px] text-slate-400">Επίλεξε ώρα (π.χ. 18:00-19:00) και βάλε πινέζα σε διαφορετικά μέρη για να βρεις το καλύτερο!</p>
+              </div>
+            </div>
+
+            <!-- Quick Target Buttons -->
+            <div id="targetHourPills" class="flex items-center gap-1 overflow-x-auto text-[11px] select-none">
+              <button onclick="setTargetHour('now')" id="targetBtn_now" class="px-2.5 py-1 rounded-lg border border-ocean-600 bg-ocean-700 text-slate-200 hover:bg-ocean-600 transition">Τώρα</button>
+              <button onclick="setTargetHour(18)" id="targetBtn_18" class="px-2.5 py-1 rounded-lg border border-cyan-400 bg-cyan-900/60 text-cyan-200 font-bold ring-1 ring-cyan-400">18:00</button>
+              <button onclick="setTargetHour(19)" id="targetBtn_19" class="px-2.5 py-1 rounded-lg border border-ocean-600 bg-ocean-700 text-slate-200 hover:bg-ocean-600 transition">19:00</button>
+              <button onclick="setTargetHour(6)" id="targetBtn_6" class="px-2.5 py-1 rounded-lg border border-ocean-600 bg-ocean-700 text-slate-200 hover:bg-ocean-600 transition">06:00 (Χάραμα)</button>
+              <button onclick="setTargetHour(20)" id="targetBtn_20" class="px-2.5 py-1 rounded-lg border border-ocean-600 bg-ocean-700 text-slate-200 hover:bg-ocean-600 transition">20:00 (Δύση)</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 7-DAY FORECAST & BEST DAY OF THE WEEK BANNER -->
+        <div class="bg-gradient-to-r from-purple-950/50 via-ocean-800 to-indigo-950/50 border border-purple-500/30 rounded-2xl p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i data-lucide="calendar" class="w-4 h-4 text-purple-400"></i>
+              <span class="text-xs font-bold text-slate-200">Πρόγνωση 7 Ημερών (Ποια μέρα να πας)</span>
+            </div>
+            <span id="bestDayBadge" class="text-[11px] font-bold text-amber-300 bg-amber-950/70 border border-amber-500/40 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
+              🏆 Καλύτερη Μέρα: Υπολογισμός...
+            </span>
+          </div>
+
+          <!-- Day Tabs -->
+          <div id="dayTabsContainer" class="flex gap-1.5 overflow-x-auto pb-1 text-center select-none">
+            <!-- Dynamically populated: [Σήμερα 85%] [Αύριο 60%] [Τετάρτη 94% ★] ... -->
+          </div>
+        </div>
+
+        <!-- PRIME WINDOW HIGHLIGHT BANNER -->
+        <div class="bg-gradient-to-r from-cyan-950/70 via-ocean-800 to-blue-950/70 border border-cyan-500/30 rounded-2xl p-3 sm:p-3.5 flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300">
+              <i data-lucide="flame" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <p class="text-[10px] uppercase font-bold text-amber-300 tracking-wider">Καλύτερο Παράθυρο Ώρας (Best Feeding Window)</p>
+              <h3 id="bestTimeWindow" class="text-xs sm:text-sm font-semibold text-white">17:30 - 20:00 (Πριν τη Δύση & Πτώση Πίεσης)</h3>
+            </div>
+          </div>
+          <div class="hidden sm:block text-right">
+            <span id="solunarTag" class="text-[10px] font-semibold text-cyan-300 bg-cyan-900/60 px-2 py-1 rounded-md border border-cyan-700">
+              Major Solunar Period
+            </span>
+          </div>
+        </div>
+
+        <!-- SAFETY WARNING ALERT (Appears when wind > 5 Bft or Wave > 1.5m) -->
+        <div id="safetyAlertBox" class="hidden bg-red-950/60 border border-red-500/40 rounded-xl p-2.5 flex items-center gap-2.5 text-red-200 text-xs">
+          <i data-lucide="alert-triangle" class="w-4 h-4 text-red-400 flex-shrink-0"></i>
+          <span id="safetyAlertText">Προσοχή: Ισχυρές ριπές ανέμου (>45 km/h)! Επικίνδυνη παραμονή στα βράχια.</span>
+        </div>
+
+        <!-- KEY METRICS GRID: Beaufort, Pressure, Waves, Moon -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <!-- 1. Wind & Beaufort -->
+          <div class="bg-ocean-800/70 border border-ocean-700/60 rounded-xl p-3 flex flex-col justify-between">
+            <div class="flex items-center justify-between text-slate-400 text-[11px]">
+              <span>Άνεμος</span>
+              <i data-lucide="wind" class="w-3.5 h-3.5 text-cyan-400"></i>
+            </div>
+            <div class="my-1.5">
+              <div class="flex items-baseline gap-1">
+                <span id="windBeaufort" class="text-lg font-black text-white">3</span>
+                <span class="text-xs font-semibold text-cyan-300">Μποφόρ</span>
+              </div>
+              <p id="windDetails" class="text-[11px] text-slate-300">15 km/h • Ριπές 22 km/h</p>
+            </div>
+            <div class="flex items-center gap-1 text-[10px] text-slate-400">
+              <span id="windDirArrow" class="inline-block transform transition-transform text-cyan-400 font-bold">↑</span>
+              <span id="windDirectionText">ΒΔ (315°)</span>
+            </div>
+          </div>
+
+          <!-- 2. Barometric Pressure & Trend -->
+          <div class="bg-ocean-800/70 border border-ocean-700/60 rounded-xl p-3 flex flex-col justify-between">
+            <div class="flex items-center justify-between text-slate-400 text-[11px]">
+              <span>Ατμ. Πίεση</span>
+              <i data-lucide="gauge" class="w-3.5 h-3.5 text-amber-400"></i>
+            </div>
+            <div class="my-1.5">
+              <div class="flex items-baseline gap-1">
+                <span id="pressureValue" class="text-lg font-black text-white">1013</span>
+                <span class="text-xs font-semibold text-amber-300">hPa</span>
+              </div>
+              <p id="pressureTrend" class="text-[11px] text-emerald-400 font-medium">↘ Πτώση (-1.2 hPa / 3h)</p>
+            </div>
+            <span id="pressureComment" class="text-[10px] text-slate-400">Τροφοδοτική έξαρση (Frenzy)</span>
+          </div>
+
+          <!-- 3. Waves & Swell -->
+          <div class="bg-ocean-800/70 border border-ocean-700/60 rounded-xl p-3 flex flex-col justify-between">
+            <div class="flex items-center justify-between text-slate-400 text-[11px]">
+              <span>Κύμα & Swell</span>
+              <i data-lucide="waves" class="w-3.5 h-3.5 text-blue-400"></i>
+            </div>
+            <div class="my-1.5">
+              <div class="flex items-baseline gap-1">
+                <span id="waveHeight" class="text-lg font-black text-white">0.5</span>
+                <span class="text-xs font-semibold text-blue-300">m</span>
+              </div>
+              <p id="wavePeriod" class="text-[11px] text-slate-300">Περίοδος: 5.2 sec</p>
+            </div>
+            <span id="waveComment" class="text-[10px] text-emerald-400 font-medium">Ήπιος αφρός - Ιδανικό</span>
+          </div>
+
+          <!-- 4. Moon Phase & Solunar -->
+          <div class="bg-ocean-800/70 border border-ocean-700/60 rounded-xl p-3 flex flex-col justify-between">
+            <div class="flex items-center justify-between text-slate-400 text-[11px]">
+              <span>Σελήνη / Solunar</span>
+              <i data-lucide="moon" class="w-3.5 h-3.5 text-purple-400"></i>
+            </div>
+            <div class="my-1.5">
+              <div class="flex items-baseline gap-1">
+                <span id="moonPhaseName" class="text-xs font-bold text-white">Νέα Σελήνη</span>
+              </div>
+              <p id="moonIllum" class="text-[11px] text-purple-300">Φωτισμός: 3%</p>
+            </div>
+            <span id="solunarWindowName" class="text-[10px] text-cyan-300 font-semibold">Major 18:15</span>
+          </div>
+        </div>
+
+        <!-- 24-HOUR INTERACTIVE TIMELINE / SLIDER -->
+        <div class="bg-ocean-800/50 border border-ocean-700/50 rounded-2xl p-3.5 space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-semibold text-slate-200 flex items-center gap-1.5">
+              <i data-lucide="clock" class="w-3.5 h-3.5 text-cyan-400"></i>
+              Ωριαία Πρόγνωση & Score (Επόμενες 24 ώρες)
+            </span>
+            <span id="activeHourLabel" class="text-cyan-300 font-bold bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-700/50">
+              Τώρα
+            </span>
+          </div>
+
+          <!-- Horizontal Hourly Cards Slider -->
+          <div id="hourlyContainer" class="flex gap-2 overflow-x-auto pb-1 pt-1 text-center select-none">
+            <!-- Dynamically populated via JS -->
+          </div>
+        </div>
+
+        <!-- SHORE JIGGING PRO TACTICS & TIPS -->
+        <div class="bg-ocean-800/40 border border-ocean-700/40 rounded-2xl p-3.5">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-400"></i>
+              Συμβουλές Shore Jigging για το Σημείο
+            </h4>
+            <span class="text-[10px] text-slate-400">Προσαρμοσμένο στις συνθήκες</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+            <div class="bg-ocean-900/60 p-2.5 rounded-xl border border-ocean-700/40">
+              <span class="text-[10px] uppercase font-semibold text-slate-400 block mb-0.5">Προτεινόμενος Πλάνος</span>
+              <p id="tipLure" class="text-slate-200 font-medium">60g - 80g Slim metal jig (έντονο ρεύμα/άνεμος)</p>
+            </div>
+            <div class="bg-ocean-900/60 p-2.5 rounded-xl border border-ocean-700/40">
+              <span class="text-[10px] uppercase font-semibold text-slate-400 block mb-0.5">Στοχευμένα Θηράματα</span>
+              <p id="tipSpecies" class="text-slate-200 font-medium">Μαγιάτικα, Παλαμίδες, Λούτσοι, Συναγρίδες</p>
+            </div>
+            <div class="bg-ocean-900/60 p-2.5 rounded-xl border border-ocean-700/40">
+              <span class="text-[10px] uppercase font-semibold text-slate-400 block mb-0.5">Τεχνική & Ανάκτηση</span>
+              <p id="tipTechnique" class="text-slate-200 font-medium">High Pitch Jerk στο ξημέρωμα, Slow Pitch στο βυθό</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ALGORITHM & METHODOLOGY INFO MODAL -->
+  <div id="infoModal" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-ocean-900 border border-ocean-700 max-w-lg w-full rounded-2xl p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-ocean-700/60 pb-3">
+        <h3 class="font-bold text-sm sm:text-base text-cyan-300 flex items-center gap-2">
+          <i data-lucide="calculator" class="w-4 h-4 text-cyan-400"></i>
+          Λογική Αλγορίθμου Fishing Score
+        </h3>
+        <button id="closeInfoBtn" class="p-1 text-slate-400 hover:text-white rounded-lg">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs text-slate-300 leading-relaxed">
+        <p>Ο αλγόριθμος σχεδιάστηκε από έμπειρους αλιείς Shore Jigging & Spinning και συνδυάζει 4 βασικούς παράγοντες:</p>
+
+        <div class="p-2.5 rounded-xl bg-ocean-800/80 border border-ocean-700/60">
+          <h4 class="font-bold text-amber-300 mb-1">1. Βαρομετρική Πίεση (Βάρος 30%)</h4>
+          <p>Η πτώση της πίεσης (drop) τις τελευταίες 3-6 ώρες σηματοδοτεί την άφιξη χαμηλού βαρομετρικού και ωθεί τα αρπακτικά (Μαγιάτικα, Συναγρίδες, Τονάκια) σε έντονη τροφοληψία (frenzy) πριν από κακοκαιρία. Σταθερή πίεση = μέτρια δραστηριότητα, απότομη άνοδος = αδράνεια.</p>
+        </div>
+
+        <div class="p-2.5 rounded-xl bg-ocean-800/80 border border-ocean-700/60">
+          <h4 class="font-bold text-cyan-300 mb-1">2. Άνεμος & Μποφόρ (Βάρος 25%)</h4>
+          <p>Ιδανικός άνεμος για Shore Jigging: <strong>2 έως 4 Μποφόρ</strong>. Δημιουργεί ανατάραξη στην επιφάνεια, οξυγονώνει το νερό και διασπά τη σιλουέτα του πλάνου. Άπνοια (0-1 Bft) καθιστά τα ψάρια καχύποπτα. Άνεμοι >5 Bft καθιστούν τις βολές και τον έλεγχο του πλάνου απαγορευτικά.</p>
+        </div>
+
+        <div class="p-2.5 rounded-xl bg-ocean-800/80 border border-ocean-700/60">
+          <h4 class="font-bold text-purple-300 mb-1">3. Σελήνη & Solunar Periods (Βάρος 25%)</h4>
+          <p>Νέα Σελήνη και Πανσέληνος δημιουργούν τις ισχυρότερες παλίρροιες (Spring Tides) και έντονα παράκτια ρεύματα. Όταν η ώρα συμπίπτει με Solunar Major (Moon Transit/Underfoot) ή Minor (Rise/Set) παράθυρο, εφαρμόζεται bonus <strong>+20%</strong> στο score.</p>
+        </div>
+
+        <div class="p-2.5 rounded-xl bg-ocean-800/80 border border-ocean-700/60">
+          <h4 class="font-bold text-blue-300 mb-1">4. Κύμα & Swell (Βάρος 20%)</h4>
+          <p>Ήπιος κυματισμός (0.3m - 0.8m) δημιουργεί αφρό στους κάβους και τα γκρεμνά, παρασύροντας μικρόψαρα και ενεργοποιώντας τα αρπακτικά. Κύματα > 1.5m είναι επικίνδυνα για παραμονή στα βράχια.</p>
+        </div>
+      </div>
+
+      <button onclick="document.getElementById('infoModal').classList.add('hidden')" class="w-full py-2 bg-cyan-600 hover:bg-cyan-500 rounded-xl text-white font-semibold text-xs transition">
+        Κατάλαβα, πάμε για ψάρεμα!
+      </button>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT APPLICATION LOGIC -->
+  <script>
+    // ==========================================
+    // 1. GLOBAL STATE & CONSTANTS
+    // ==========================================
+    let map = null;
+    let currentMarker = null;
+    let activeLat = 37.6500; // Default: Cape Sounion
+    let activeLng = 24.0250;
+    let forecastData = null;
+    let selectedHourIndex = 0;
+    let isDrawerCollapsed = false;
+
+    // ==========================================
+    // 2. SOLUNAR & MOON PHASE CALCULATOR
+    // ==========================================
+    function getMoonData(date = new Date()) {
+      // Known reference new moon: Jan 11, 2024 11:57 UTC
+      const refNewMoon = new Date(Date.UTC(2024, 0, 11, 11, 57));
+      const synodicMonth = 29.53058867; // days
+      
+      const diffDays = (date.getTime() - refNewMoon.getTime()) / (1000 * 60 * 60 * 24);
+      let phaseRatio = (diffDays % synodicMonth) / synodicMonth;
+      if (phaseRatio < 0) phaseRatio += 1; // 0.0 to 1.0
+
+      // Illumination percentage (0% to 100%)
+      const illumination = Math.round((1 - Math.cos(phaseRatio * 2 * Math.PI)) / 2 * 100);
+
+      // Phase identification
+      let phaseName = "Νέα Σελήνη";
+      if (phaseRatio >= 0.03 && phaseRatio < 0.22) phaseName = "Αύξων Μηνίσκος";
+      else if (phaseRatio >= 0.22 && phaseRatio < 0.28) phaseName = "Πρώτο Τέταρτο";
+      else if (phaseRatio >= 0.28 && phaseRatio < 0.47) phaseName = "Αύξων Αμφίκυρτος";
+      else if (phaseRatio >= 0.47 && phaseRatio < 0.53) phaseName = "Πανσέληνος";
+      else if (phaseRatio >= 0.53 && phaseRatio < 0.72) phaseName = "Φθίνων Αμφίκυρτος";
+      else if (phaseRatio >= 0.72 && phaseRatio < 0.78) phaseName = "Τελευταίο Τέταρτο";
+      else if (phaseRatio >= 0.78 && phaseRatio < 0.97) phaseName = "Φθίνων Μηνίσκος";
+
+      // Solunar score factor (New moon and Full moon trigger highest tidal flow)
+      // 0.0 = New, 0.5 = Full -> score high. 0.25 & 0.75 -> score lower
+      const moonScoreFactor = Math.abs(Math.cos(phaseRatio * 2 * Math.PI)); // 1.0 at New/Full, 0.0 at Quarter
+      const moonScore = 50 + (moonScoreFactor * 50); // 50 to 100
+
+      // Approximate Solunar transit hours based on phase
+      // Moon overhead occurs roughly: (phaseRatio * 24 + 12) % 24
+      const majorHour1 = Math.floor((phaseRatio * 24 + 12) % 24);
+      const majorHour2 = Math.floor((majorHour1 + 12) % 24);
+      const minorHour1 = Math.floor((majorHour1 + 6) % 24);
+      const minorHour2 = Math.floor((majorHour1 + 18) % 24);
+
+      return {
+        phaseRatio,
+        illumination,
+        phaseName,
+        moonScore,
+        majorHours: [majorHour1, majorHour2],
+        minorHours: [minorHour1, minorHour2]
+      };
+    }
+
+    // ==========================================
+    // 3. BEAUFORT CONVERTER & WIND UTILITIES
+    // ==========================================
+    function kmhToBeaufort(kmh) {
+      if (kmh < 1) return { bft: 0, desc: "Άπνοια" };
+      if (kmh <= 5) return { bft: 1, desc: "Σχεδόν άπνοια" };
+      if (kmh <= 11) return { bft: 2, desc: "Πολύ ασθενής" };
+      if (kmh <= 19) return { bft: 3, desc: "Ασθενής" };
+      if (kmh <= 28) return { bft: 4, desc: "Μέτριος" };
+      if (kmh <= 38) return { bft: 5, desc: "Σχεδόν ισχυρός" };
+      if (kmh <= 49) return { bft: 6, desc: "Ισχυρός" };
+      if (kmh <= 61) return { bft: 7, desc: "Πολύ ισχυρός" };
+      return { bft: 8, desc: "Θυελλώδης" };
+    }
+
+    function degreesToCardinal(deg) {
+      const dirs = ["Β", "ΒΒΑ", "ΒΑ", "ΑΒΑ", "Α", "ΑΝΑ", "ΝΑ", "ΝΝΑ", "Ν", "ΝΝΔ", "ΝΔ", "ΔΝΔ", "Δ", "ΔΒΔ", "ΒΔ", "ΒΒΔ"];
+      const index = Math.round((deg % 360) / 22.5) % 16;
+      return dirs[index];
+    }
+
+    // ==========================================
+    // 4. CORE FISHING SCORE ALGORITHM
+    // ==========================================
+    /**
+     * Calculates fishing score from 0 to 100 based on the 4 weighted parameters
+     * @param {Object} current - Hourly weather & marine conditions
+     * @param {number} pressureDelta3h - Barometric change in last 3 hours (hPa)
+     * @param {Object} moonData - Solunar and moon state
+     * @param {number} hourOfDay - Current local hour (0-23)
+     */
+    function calculateFishingScore(current, pressureDelta3h, moonData, hourOfDay) {
+      // --- A. BAROMETRIC PRESSURE (Weight 30%) ---
+      let pressureScore = 70; // baseline steady
+      if (pressureDelta3h < -1.8) {
+        pressureScore = 100; // Sudden pre-frontal feeding rush
+      } else if (pressureDelta3h < -0.6) {
+        pressureScore = 90;  // Steady drop, optimal feeding
+      } else if (pressureDelta3h <= 0.6) {
+        pressureScore = 70;  // Stable conditions
+      } else if (pressureDelta3h <= 1.8) {
+        pressureScore = 45;  // Post-frontal rise, fish lock jaws
+      } else {
+        pressureScore = 30;  // Sharp rise, lethargic fish
+      }
+
+      // --- B. WIND & BEAUFORT (Weight 25%) ---
+      const windKmh = current.windSpeed;
+      const bft = kmhToBeaufort(windKmh).bft;
+      let windScore = 50;
+
+      if (bft >= 2 && bft <= 4) {
+        windScore = 95; // Ideal 2-4 Beaufort: surface turbulence, oxygen, moving bait
+      } else if (bft === 1) {
+        windScore = 65; // Light breeze
+      } else if (bft === 0) {
+        windScore = 45; // Dead calm: crystal clear water, shy fish
+      } else if (bft === 5) {
+        windScore = 35; // Tough casting, heavy belly on braid
+      } else {
+        windScore = 15; // >5 Bft: dangerous waves, uncontrollable line
+      }
+
+      // --- C. MOON & SOLUNAR (Weight 25%) ---
+      let solunarScore = moonData.moonScore; // 50 to 100 based on Spring vs Neap tides
+
+      // Check Solunar Window overlap (Major = ±1 hour, Minor = ±45 mins)
+      const isMajor = moonData.majorHours.some(h => Math.abs(h - hourOfDay) <= 1 || Math.abs(h - hourOfDay) >= 23);
+      const isMinor = moonData.minorHours.some(h => Math.abs(h - hourOfDay) <= 1 || Math.abs(h - hourOfDay) >= 23);
+      
+      let solunarBonus = 0;
+      if (isMajor) solunarBonus = 20;
+      else if (isMinor) solunarBonus = 12;
+
+      // Crepuscular Golden Hour bonus (Dawn: 06-08, Dusk: 18-20)
+      const isGoldenHour = (hourOfDay >= 6 && hourOfDay <= 8) || (hourOfDay >= 18 && hourOfDay <= 20);
+      if (isGoldenHour) solunarBonus += 10;
+
+      solunarScore = Math.min(100, solunarScore + solunarBonus);
+
+      // --- D. WAVE & SWELL (Weight 20%) ---
+      const waveH = current.waveHeight !== undefined ? current.waveHeight : (bft * 0.25); // estimate if marine api returns null
+      let waveScore = 70;
+
+      if (waveH >= 0.3 && waveH <= 0.8) {
+        waveScore = 95; // Ideal foam and wash along cliff edges
+      } else if (waveH > 0.8 && waveH <= 1.2) {
+        waveScore = 75; // Active sea, need heavy jigs
+      } else if (waveH < 0.3) {
+        waveScore = 60; // Flat sea, low action
+      } else if (waveH <= 1.6) {
+        waveScore = 40; // Rough, restricted access
+      } else {
+        waveScore = 15; // Dangerous waves > 1.6m
+      }
+
+      // --- COMPOSITE WEIGHTED CALCULATION ---
+      const finalScore = Math.round(
+        (pressureScore * 0.30) +
+        (windScore * 0.25) +
+        (solunarScore * 0.25) +
+        (waveScore * 0.20)
+      );
+
+      return {
+        totalScore: Math.min(100, Math.max(10, finalScore)),
+        pressureScore,
+        windScore,
+        solunarScore,
+        waveScore,
+        bft,
+        waveH,
+        isMajor,
+        isMinor,
+        isGoldenHour
+      };
+    }
+
+    // State variables
+    let forecastData = [];
+    let selectedHourIndex = 0;
+    let selectedDayIndex = 0;
+    let evaluatedDays = [];
+    let targetLockedHour = 18; // Default to 18:00 for evening fishing planning
+    let currentEvaluatedHours = [];
+
+    function setTargetHour(val) {
+      targetLockedHour = val;
+
+      // Update button visual styles
+      ['now', 18, 19, 6, 20].forEach(h => {
+        const btn = document.getElementById(`targetBtn_${h}`);
+        if (!btn) return;
+        if (targetLockedHour === h) {
+          btn.className = "px-2.5 py-1 rounded-lg border border-cyan-400 bg-cyan-900/60 text-cyan-200 font-bold ring-1 ring-cyan-400";
+        } else {
+          btn.className = "px-2.5 py-1 rounded-lg border border-ocean-600 bg-ocean-700 text-slate-200 hover:bg-ocean-600 transition";
+        }
+      });
+
+      const badge = document.getElementById('targetLockBadge');
+      if (targetLockedHour === 'now') {
+        const nowH = new Date().getHours();
+        badge.innerText = `Τώρα (${String(nowH).padStart(2, '0')}:00)`;
+      } else {
+        badge.innerText = `${String(targetLockedHour).padStart(2, '0')}:00 (Κλειδωμένη)`;
+      }
+
+      // Re-select hour in active day
+      if (evaluatedDays.length > 0 && evaluatedDays[selectedDayIndex]) {
+        selectDay(selectedDayIndex);
+      }
+    }
+
+    // ==========================================
+    // 5. OPEN-METEO API INTEGRATION (7 DAYS)
+    // ==========================================
+    async function fetchFishingData(lat, lng) {
+      showLoading(true);
+
+      try {
+        // Fetch Weather & Pressure API for 7 days
+        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=surface_pressure,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,temperature_2m,weather_code&timezone=auto&forecast_days=7`;
+        // Fetch Marine API (Waves & Swell) for 7 days
+        const marineUrl = `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&hourly=wave_height,wave_direction,wave_period,swell_wave_height&timezone=auto&forecast_days=7`;
+
+        const [weatherRes, marineRes] = await Promise.allSettled([
+          fetch(weatherUrl),
+          fetch(marineUrl)
+        ]);
+
+        let weatherJson = null;
+        if (weatherRes.status === 'fulfilled' && weatherRes.value.ok) {
+          weatherJson = await weatherRes.value.json();
+        }
+
+        let marineJson = null;
+        if (marineRes.status === 'fulfilled' && marineRes.value.ok) {
+          marineJson = await marineRes.value.json();
+        }
+
+        if (!weatherJson || !weatherJson.hourly) {
+          throw new Error("Δεν ήταν δυνατή η ανάκτηση των καιρικών δεδομένων");
+        }
+
+        processForecastData(lat, lng, weatherJson, marineJson);
+      } catch (err) {
+        console.warn("API Error, utilizing fallback model:", err);
+        generateFallbackData(lat, lng);
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    // Fallback data generator for offline / spot without marine coverage (7 days)
+    function generateFallbackData(lat, lng) {
+      const now = new Date();
+      const hours = [];
+      for (let i = 0; i < 168; i++) {
+        const d = new Date(now.getTime() + i * 3600000);
+        hours.push({
+          time: d.toISOString(),
+          pressure: 1014 - Math.sin(i / 6) * 3,
+          windSpeed: 14 + Math.cos(i / 4) * 8,
+          windGusts: 22 + Math.cos(i / 4) * 10,
+          windDirection: 310,
+          temperature: 22 + Math.sin(i / 8) * 4,
+          waveHeight: 0.5 + Math.sin(i / 5) * 0.3,
+          wavePeriod: 5.0,
+          weatherCode: 1
+        });
+      }
+      renderForecast(lat, lng, hours);
+    }
+
+    // Process real API responses
+    function processForecastData(lat, lng, weather, marine) {
+      const hourly = weather.hourly;
+      const marineHourly = marine && marine.hourly ? marine.hourly : null;
+      const count = Math.min(168, hourly.time.length);
+      const hours = [];
+
+      for (let i = 0; i < count; i++) {
+        const p = hourly.surface_pressure ? hourly.surface_pressure[i] : hourly.pressure_msl[i];
+        const wSpeed = hourly.wind_speed_10m[i];
+        const wGusts = hourly.wind_gusts_10m ? hourly.wind_gusts_10m[i] : wSpeed * 1.3;
+        const wDir = hourly.wind_direction_10m[i];
+        const temp = hourly.temperature_2m[i];
+        const wCode = hourly.weather_code[i];
+
+        let waveH = 0.4;
+        let waveP = 5.0;
+        if (marineHourly && marineHourly.wave_height && marineHourly.wave_height[i] !== null) {
+          waveH = marineHourly.wave_height[i];
+          waveP = marineHourly.wave_period ? marineHourly.wave_period[i] || 5.0 : 5.0;
+        } else {
+          const bft = kmhToBeaufort(wSpeed).bft;
+          waveH = Math.max(0.2, (bft * 0.22));
+        }
+
+        hours.push({
+          time: hourly.time[i],
+          pressure: p,
+          windSpeed: wSpeed,
+          windGusts: wGusts,
+          windDirection: wDir,
+          temperature: temp,
+          waveHeight: waveH,
+          wavePeriod: waveP,
+          weatherCode: wCode
+        });
+      }
+
+      renderForecast(lat, lng, hours);
+    }
+
+    // ==========================================
+    // 6. UI RENDERING & 7-DAY BINDING
+    // ==========================================
+    function renderForecast(lat, lng, hours) {
+      forecastData = hours;
+
+      // Update location info
+      document.getElementById('spotCoords').innerText = `${lat.toFixed(4)}° N, ${lng.toFixed(4)}° E (Παράκτια Ζώνη)`;
+
+      // Reverse geocode or spot name
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=12&addressdetails=1`)
+        .then(r => r.json())
+        .then(data => {
+          if (data && data.display_name) {
+            const parts = data.display_name.split(',');
+            document.getElementById('spotName').innerText = parts.slice(0, 2).join(', ');
+          }
+        })
+        .catch(() => {
+          document.getElementById('spotName').innerText = `Παράκτιο Σημείο (${lat.toFixed(2)}°, ${lng.toFixed(2)}°)`;
+        });
+
+      // Group into days
+      const daysMap = {};
+      hours.forEach((item, idx) => {
+        const hourDate = new Date(item.time);
+        const hourOfDay = hourDate.getHours();
+
+        let pDelta = 0;
+        if (idx >= 3) {
+          pDelta = item.pressure - hours[idx - 3].pressure;
+        } else if (idx < hours.length - 3) {
+          pDelta = hours[idx + 3].pressure - item.pressure;
+        }
+
+        const moonData = getMoonData(hourDate);
+        const scoreObj = calculateFishingScore(item, pDelta, moonData, hourOfDay);
+
+        const evaluatedItem = {
+          ...item,
+          scoreObj,
+          hourDate,
+          pDelta,
+          moonData
+        };
+
+        const dayKey = `${hourDate.getFullYear()}-${String(hourDate.getMonth() + 1).padStart(2, '0')}-${String(hourDate.getDate()).padStart(2, '0')}`;
+        if (!daysMap[dayKey]) {
+          daysMap[dayKey] = {
+            dateKey: dayKey,
+            date: hourDate,
+            hours: []
+          };
+        }
+        daysMap[dayKey].hours.push(evaluatedItem);
+      });
+
+      // Convert days to array and calculate day statistics
+      const todayDateStr = new Date().toISOString().split('T')[0];
+      evaluatedDays = Object.values(daysMap).slice(0, 7).map((d, dIdx) => {
+        const scores = d.hours.map(h => h.scoreObj.totalScore);
+        const maxScore = Math.max(...scores);
+        const avgScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+        const bestHourItem = d.hours.find(h => h.scoreObj.totalScore === maxScore) || d.hours[0];
+
+        let dayLabel = "Σήμερα";
+        if (dIdx === 1) dayLabel = "Αύριο";
+        else if (dIdx > 1) {
+          const daysOfWeek = ["Κυρ", "Δευ", "Τρι", "Τετ", "Πεμ", "Παρ", "Σαβ"];
+          dayLabel = `${daysOfWeek[d.date.getDay()]} ${d.date.getDate()}/${d.date.getMonth() + 1}`;
+        }
+
+        return {
+          ...d,
+          dayIndex: dIdx,
+          dayLabel,
+          maxScore,
+          avgScore,
+          bestHourItem
+        };
+      });
+
+      // Find overall best day of the week
+      let overallBestDay = evaluatedDays[0];
+      evaluatedDays.forEach(d => {
+        if (d.maxScore > overallBestDay.maxScore) {
+          overallBestDay = d;
+        }
+      });
+
+      // Display Best Day Badge
+      const bestDayBadge = document.getElementById('bestDayBadge');
+      if (bestDayBadge && overallBestDay) {
+        bestDayBadge.innerText = `🏆 Καλύτερη: ${overallBestDay.dayLabel} (${overallBestDay.maxScore}%)`;
+      }
+
+      // Render Day Tabs
+      renderDayTabs(overallBestDay);
+
+      // Select default day (Today = 0)
+      selectDay(0);
+    }
+
+    function renderDayTabs(overallBestDay) {
+      const container = document.getElementById('dayTabsContainer');
+      if (!container) return;
+      container.innerHTML = '';
+
+      evaluatedDays.forEach((d, idx) => {
+        const isBestDay = overallBestDay && d.dateKey === overallBestDay.dateKey;
+        const isSelected = idx === selectedDayIndex;
+
+        let scoreClass = "text-amber-300";
+        if (d.maxScore >= 80) scoreClass = "text-emerald-300 font-bold";
+        else if (d.maxScore >= 65) scoreClass = "text-cyan-300 font-bold";
+        else if (d.maxScore < 50) scoreClass = "text-red-300";
+
+        const tab = document.createElement('button');
+        tab.className = `flex-shrink-0 px-3 py-1.5 rounded-xl border text-xs flex items-center gap-1.5 transition ${
+          isSelected 
+            ? 'border-cyan-400 bg-cyan-950/80 text-white shadow-md ring-1 ring-cyan-400' 
+            : 'border-ocean-700/70 bg-ocean-800/70 text-slate-300 hover:bg-ocean-700/60'
+        }`;
+        tab.onclick = () => selectDay(idx);
+
+        tab.innerHTML = `
+          <span>${d.dayLabel}</span>
+          <span class="${scoreClass}">★ ${d.maxScore}%</span>
+          ${isBestDay ? '<span class="text-[10px] text-amber-300 ml-0.5">🏆</span>' : ''}
+        `;
+
+        container.appendChild(tab);
+      });
+    }
+
+    function selectDay(dayIdx) {
+      selectedDayIndex = dayIdx;
+      const dayData = evaluatedDays[dayIdx];
+      if (!dayData) return;
+
+      // Re-render day tabs to reflect selection
+      let overallBestDay = evaluatedDays[0];
+      evaluatedDays.forEach(d => { if (d.maxScore > overallBestDay.maxScore) overallBestDay = d; });
+      renderDayTabs(overallBestDay);
+
+      currentEvaluatedHours = dayData.hours;
+
+      // Best Window Banner for this selected day
+      const bestItem = dayData.bestHourItem;
+      const startH = bestItem.hourDate.getHours();
+      const endH = (startH + 3) % 24;
+      const formattedStart = `${String(startH).padStart(2, '0')}:00`;
+      const formattedEnd = `${String(endH).padStart(2, '0')}:00`;
+
+      let bestReason = "Υψηλή δραστηριότητα";
+      if (bestItem.pDelta < -0.5) bestReason = "Πτώση Πίεσης & Τροφοληψία";
+      else if (bestItem.scoreObj.isGoldenHour) bestReason = "Χρυσή Ώρα (Ξημέρωμα/Δύση)";
+      else if (bestItem.scoreObj.isMajor) bestReason = "Major Solunar Transit";
+
+      document.getElementById('bestTimeWindow').innerText = `${dayData.dayLabel}: ${formattedStart} - ${formattedEnd} (${bestReason} • Score ${bestItem.scoreObj.totalScore}%)`;
+
+      // Determine which hour to select inside this day
+      let targetHourIndex = 0;
+      if (targetLockedHour === 'now') {
+        const currentHour = new Date().getHours();
+        const found = currentEvaluatedHours.findIndex(h => h.hourDate.getHours() === currentHour);
+        targetHourIndex = found !== -1 ? found : 0;
+      } else {
+        const found = currentEvaluatedHours.findIndex(h => h.hourDate.getHours() === targetLockedHour);
+        targetHourIndex = found !== -1 ? found : 0;
+      }
+
+      // Render 24 Hours for the selected day
+      const container = document.getElementById('hourlyContainer');
+      container.innerHTML = '';
+
+      currentEvaluatedHours.forEach((h, idx) => {
+        const timeStr = `${String(h.hourDate.getHours()).padStart(2, '0')}:00`;
+        const score = h.scoreObj.totalScore;
+
+        let scoreColor = "text-red-400 border-red-500/30";
+        if (score >= 80) scoreColor = "text-emerald-400 border-emerald-500/40 bg-emerald-950/30";
+        else if (score >= 65) scoreColor = "text-cyan-400 border-cyan-500/40 bg-cyan-950/30";
+        else if (score >= 50) scoreColor = "text-amber-400 border-amber-500/40 bg-amber-950/30";
+
+        const isTargetMatch = (targetLockedHour !== 'now' && h.hourDate.getHours() === targetLockedHour);
+
+        const card = document.createElement('div');
+        card.className = `flex-shrink-0 w-20 py-2 px-1.5 rounded-xl border ${
+          idx === targetHourIndex 
+            ? 'border-cyan-400 bg-ocean-700/90 shadow-md ring-2 ring-cyan-400 scale-[1.03]' 
+            : 'border-ocean-700/60 bg-ocean-800/60'
+        } cursor-pointer transition hover:bg-ocean-700/50 flex flex-col items-center gap-1`;
+        
+        card.onclick = () => selectHour(idx);
+
+        card.innerHTML = `
+          <div class="flex items-center gap-0.5">
+            <span class="text-[11px] font-semibold text-slate-300">${timeStr}</span>
+            ${isTargetMatch ? '<span class="text-[8px] bg-cyan-500 text-ocean-950 font-bold px-1 rounded-full">🎯</span>' : ''}
+          </div>
+          <span class="text-xs font-black ${scoreColor} px-1.5 py-0.5 rounded-full">${score}%</span>
+          <span class="text-[10px] text-slate-400">${h.scoreObj.bft} Bft</span>
+          <span class="text-[10px] text-blue-300">${h.waveHeight.toFixed(1)}m</span>
+        `;
+
+        container.appendChild(card);
+      });
+
+      // Update detail view for the target hour
+      selectHour(targetHourIndex);
+    }
+
+    function selectHour(idx) {
+      selectedHourIndex = idx;
+      if (!currentEvaluatedHours || !currentEvaluatedHours[idx]) return;
+
+      const container = document.getElementById('hourlyContainer');
+      Array.from(container.children).forEach((child, i) => {
+        if (i === idx) {
+          child.className = child.className.replace('border-ocean-700/60 bg-ocean-800/60', 'border-cyan-400 bg-ocean-700/90 shadow-md ring-2 ring-cyan-400 scale-[1.03]');
+        } else {
+          child.className = child.className.replace('border-cyan-400 bg-ocean-700/90 shadow-md ring-2 ring-cyan-400 scale-[1.03]', 'border-ocean-700/60 bg-ocean-800/60');
+        }
+      });
+
+      updateSelectedHourView(idx, currentEvaluatedHours);
+    }
+
+    function updateSelectedHourView(idx, evaluatedHours) {
+      const item = evaluatedHours[idx];
+      const score = item.scoreObj.totalScore;
+      const moon = getMoonData(item.hourDate);
+
+      // Label
+      const timeStr = `${String(item.hourDate.getHours()).padStart(2, '0')}:00`;
+      document.getElementById('activeHourLabel').innerText = idx === 0 ? `Τώρα (${timeStr})` : `Πρόγνωση (${timeStr})`;
+
+      // Fishing Score circle & number
+      document.getElementById('scoreNumber').innerText = `${score}%`;
+      const circle = document.getElementById('scoreCircle');
+      circle.setAttribute('stroke-dasharray', `${score}, 100`);
+
+      // Verdict styling
+      const verdictBadge = document.getElementById('verdictBadge');
+      const verdictSubtitle = document.getElementById('verdictSubtitle');
+
+      if (score >= 80) {
+        circle.setAttribute('class', 'text-emerald-400 transition-all duration-700 ease-out');
+        verdictBadge.className = "inline-block text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+        verdictBadge.innerText = "Εξαιρετική Ιδέα!";
+        verdictSubtitle.innerText = "Ιδανικές συνθήκες - Κορυφαία κινητικότητα αρπακτικών.";
+      } else if (score >= 65) {
+        circle.setAttribute('class', 'text-cyan-400 transition-all duration-700 ease-out');
+        verdictBadge.className = "inline-block text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30";
+        verdictBadge.innerText = "Καλή Ιδέα";
+        verdictSubtitle.innerText = "Ευνοϊκές συνθήκες - Επιλέξτε κατάλληλους πλάνους.";
+      } else if (score >= 50) {
+        circle.setAttribute('class', 'text-amber-400 transition-all duration-700 ease-out');
+        verdictBadge.className = "inline-block text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30";
+        verdictBadge.innerText = "Μέτρια Ιδέα";
+        verdictSubtitle.innerText = "Απαιτείται επιμονή και λεπτά παράμαλλα (Fluorocarbon).";
+      } else {
+        circle.setAttribute('class', 'text-red-400 transition-all duration-700 ease-out');
+        verdictBadge.className = "inline-block text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30";
+        verdictBadge.innerText = "Κακή Ιδέα / Ακατάλληλο";
+        verdictSubtitle.innerText = "Δυσμενείς συνθήκες ή επικίνδυνος καιρός.";
+      }
+
+      // Wind & Beaufort
+      document.getElementById('windBeaufort').innerText = item.scoreObj.bft;
+      document.getElementById('windDetails').innerText = `${Math.round(item.windSpeed)} km/h • Ριπές ${Math.round(item.windGusts)} km/h`;
+      
+      const windDirText = degreesToCardinal(item.windDirection);
+      document.getElementById('windDirectionText').innerText = `${windDirText} (${Math.round(item.windDirection)}°)`;
+      document.getElementById('windDirArrow').style.transform = `rotate(${item.windDirection}deg)`;
+
+      // Safety warnings
+      const safetyBox = document.getElementById('safetyAlertBox');
+      const safetyText = document.getElementById('safetyAlertText');
+      if (item.windGusts > 45 || item.scoreObj.bft >= 6 || item.waveHeight > 1.5) {
+        safetyBox.classList.remove('hidden');
+        if (item.waveHeight > 1.5) {
+          safetyText.innerText = "⚠️ Προσοχή: Κύμα άνω των 1.5m! Υψηλός κίνδυνος αναρροής στα βράχια.";
+        } else {
+          safetyText.innerText = `⚠️ Προσοχή: Ισχυρές ριπές ανέμου (${Math.round(item.windGusts)} km/h)!`;
+        }
+      } else {
+        safetyBox.classList.add('hidden');
+      }
+
+      // Pressure
+      document.getElementById('pressureValue').innerText = Math.round(item.pressure);
+      const pDelta = item.pDelta;
+      const trendEl = document.getElementById('pressureTrend');
+      const commentEl = document.getElementById('pressureComment');
+
+      if (pDelta < -0.8) {
+        trendEl.className = "text-[11px] text-emerald-400 font-medium";
+        trendEl.innerText = `↘ Πτώση (${pDelta.toFixed(1)} hPa / 3h)`;
+        commentEl.innerText = "Ενεργή τροφοληψία (Frenzy)";
+      } else if (pDelta > 0.8) {
+        trendEl.className = "text-[11px] text-red-400 font-medium";
+        trendEl.innerText = `↗ Άνοδος (+${pDelta.toFixed(1)} hPa / 3h)`;
+        commentEl.innerText = "Δύσκολο ψάρεμα / Αδράνεια";
+      } else {
+        trendEl.className = "text-[11px] text-slate-300 font-medium";
+        trendEl.innerText = `→ Σταθερή (${pDelta.toFixed(1)} hPa / 3h)`;
+        commentEl.innerText = "Κανονική δραστηριότητα";
+      }
+
+      // Waves & Swell
+      document.getElementById('waveHeight').innerText = item.waveHeight.toFixed(1);
+      document.getElementById('wavePeriod').innerText = `Περίοδος: ${item.wavePeriod.toFixed(1)} sec`;
+      const waveComment = document.getElementById('waveComment');
+      if (item.waveHeight >= 0.3 && item.waveHeight <= 0.8) {
+        waveComment.className = "text-[10px] text-emerald-400 font-medium";
+        waveComment.innerText = "Ιδανικός αφρός & οξυγόνο";
+      } else if (item.waveHeight > 1.4) {
+        waveComment.className = "text-[10px] text-red-400 font-medium";
+        waveComment.innerText = "Επικίνδυνος κυματισμός";
+      } else {
+        waveComment.className = "text-[10px] text-slate-400 font-medium";
+        waveComment.innerText = "Ήπια κατάσταση θάλασσας";
+      }
+
+      // Moon & Solunar
+      document.getElementById('moonPhaseName').innerText = moon.phaseName;
+      document.getElementById('moonIllum').innerText = `Φωτισμός: ${moon.illumination}%`;
+      const majorH = moon.majorHours[0];
+      document.getElementById('solunarWindowName').innerText = `Major ${String(majorH).padStart(2, '0')}:00`;
+
+      // Tactics tips calculation based on wind & wave
+      const tipLure = document.getElementById('tipLure');
+      const tipSpecies = document.getElementById('tipSpecies');
+      const tipTechnique = document.getElementById('tipTechnique');
+
+      if (item.scoreObj.bft >= 4 || item.waveHeight >= 0.8) {
+        tipLure.innerText = "80g - 100g Slim Jig (Βαρύς για να κόβει το ρεύμα)";
+        tipSpecies.innerText = "Μαγιάτικα, Συναγρίδες, Τονάκια στους κάβους";
+        tipTechnique.innerText = "Fast Pitch & έντονα χτυπήματα κοντά στο βυθό";
+      } else if (item.scoreObj.bft <= 1 && item.waveHeight < 0.3) {
+        tipLure.innerText = "30g - 45g Micro Jig ή Slow Jig με φυσικά χρώματα";
+        tipSpecies.innerText = "Κοκκάλια, Μελανούρια, Σαργοί, Λαβράκια";
+        tipTechnique.innerText = "Finesse Slow Pitch & μακρύ λεπτό Fluorocarbon (0.28-0.33mm)";
+      } else {
+        tipLure.innerText = "60g Long/Semi-Long Jig (Κλασικό Shore Jigging)";
+        tipSpecies.innerText = "Μαγιάτικα, Παλαμίδες, Λούτσοι, Συναγρίδες";
+        tipTechnique.innerText = "High Pitch Jerks στην ανάκτηση με παύσεις (Fall)";
+      }
+
+      // Sync Mini Floating Bar
+      const miniSpotName = document.getElementById('miniSpotName');
+      const miniCoords = document.getElementById('miniCoords');
+      const miniScoreBadge = document.getElementById('miniScoreBadge');
+      const miniTargetBadge = document.getElementById('miniTargetBadge');
+
+      if (miniSpotName) miniSpotName.innerText = document.getElementById('spotName').innerText;
+      if (miniCoords) miniCoords.innerText = `${activeLat.toFixed(4)}° N, ${activeLng.toFixed(4)}° E`;
+      if (miniTargetBadge) {
+        miniTargetBadge.innerText = targetLockedHour === 'now' ? '🎯 Τώρα' : `🎯 ${String(targetLockedHour).padStart(2, '0')}:00`;
+      }
+      if (miniScoreBadge) {
+        miniScoreBadge.innerText = `${score}%`;
+        if (score >= 80) {
+          miniScoreBadge.className = "inline-block text-xs font-black px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+        } else if (score >= 65) {
+          miniScoreBadge.className = "inline-block text-xs font-black px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30";
+        } else if (score >= 50) {
+          miniScoreBadge.className = "inline-block text-xs font-black px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30";
+        } else {
+          miniScoreBadge.className = "inline-block text-xs font-black px-2.5 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30";
+        }
+      }
+    }
+
+    function showLoading(show) {
+      const el = document.getElementById('loadingOverlay');
+      if (show) el.classList.remove('hidden');
+      else el.classList.add('hidden');
+    }
+
+    // ==========================================
+    // 7. MAP INITIALIZATION & INTERACTION
+    // ==========================================
+    function initMap() {
+      // Map instance
+      map = L.map('map', {
+        zoomControl: false,
+        attributionControl: false
+      }).setView([activeLat, activeLng], 11);
+
+      // Ocean dark / nautical tile layer
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19,
+        subdomains: 'abcd',
+      }).addTo(map);
+
+      // Custom Leaflet Zoom Control at top right
+      L.control.zoom({ position: 'topright' }).addTo(map);
+
+      // Custom HTML Pulse Pin Marker
+      const customIcon = L.divIcon({
+        className: 'custom-fishing-pin',
+        html: `
+          <div class="pin-pulse"></div>
+          <div class="pin-body">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+          </div>
+        `,
+        iconSize: [36, 36],
+        iconAnchor: [18, 18]
+      });
+
+      currentMarker = L.marker([activeLat, activeLng], {
+        icon: customIcon,
+        draggable: true
+      }).addTo(map);
+
+      // Drag listener
+      currentMarker.on('dragend', function(e) {
+        const coord = e.target.getLatLng();
+        activeLat = coord.lat;
+        activeLng = coord.lng;
+        fetchFishingData(activeLat, activeLng);
+      });
+
+      // Map Click listener
+      map.on('click', function(e) {
+        activeLat = e.latlng.lat;
+        activeLng = e.latlng.lng;
+        currentMarker.setLatLng(e.latlng);
+        map.panTo(e.latlng, { animate: true, duration: 0.5 });
+        fetchFishingData(activeLat, activeLng);
+      });
+
+      // Initial Fetch
+      fetchFishingData(activeLat, activeLng);
+    }
+
+    // Select preset coastal hotspot
+    function selectSpot(lat, lng, name) {
+      activeLat = lat;
+      activeLng = lng;
+      map.setView([lat, lng], 12);
+      currentMarker.setLatLng([lat, lng]);
+      document.getElementById('spotName').innerText = name;
+      document.getElementById('presetMenu').classList.add('hidden');
+      fetchFishingData(lat, lng);
+    }
+
+    // Geocode Search
+    async function searchLocation(query) {
+      if (!query || query.trim().length === 0) return;
+      showLoading(true);
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
+        const data = await res.json();
+        if (data && data.length > 0) {
+          const lat = parseFloat(data[0].lat);
+          const lon = parseFloat(data[0].lon);
+          activeLat = lat;
+          activeLng = lon;
+          map.setView([lat, lon], 12);
+          currentMarker.setLatLng([lat, lon]);
+          document.getElementById('spotName').innerText = data[0].display_name.split(',')[0];
+          fetchFishingData(lat, lon);
+        } else {
+          alert('Δεν βρέθηκε η τοποθεσία. Δοκιμάστε κάποιο άλλο όνομα ακτής ή κάβου.');
+        }
+      } catch (err) {
+        alert('Σφάλμα αναζήτησης τοποθεσίας.');
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    // ==========================================
+    // 8. CARD COLLAPSE & EXPAND LOGIC
+    // ==========================================
+    let isForecastCollapsed = false;
+
+    function toggleForecastCard(collapse) {
+      if (typeof collapse === 'boolean') {
+        isForecastCollapsed = collapse;
+      } else {
+        isForecastCollapsed = !isForecastCollapsed;
+      }
+
+      const drawer = document.getElementById('forecastDrawer');
+      const miniBar = document.getElementById('miniForecastBar');
+      const mapBtnText = document.getElementById('floatingMapToggleText');
+
+      if (isForecastCollapsed) {
+        // Completely hide the large card and show sleek mini bar
+        drawer.classList.add('hidden');
+        miniBar.classList.remove('hidden');
+        if (mapBtnText) mapBtnText.innerText = "Πρόγνωση";
+      } else {
+        // Show large forecast card and hide mini bar
+        drawer.classList.remove('hidden');
+        miniBar.classList.add('hidden');
+        if (mapBtnText) mapBtnText.innerText = "Πλήρης Χάρτης";
+      }
+
+      // Re-create lucide icons for newly shown elements
+      if (window.lucide) lucide.createIcons();
+
+      // Trigger Leaflet resize smoothly so entire screen map is interactive
+      if (window.map) {
+        setTimeout(() => { map.invalidateSize(); }, 120);
+      }
+    }
+    window.toggleForecastCard = toggleForecastCard;
+    window.toggleDrawer = toggleForecastCard;
+
+    function searchCurrentQuery() {
+      const input = document.getElementById('searchInput');
+      if (input && input.value && input.value.trim().length > 0) {
+        searchLocation(input.value.trim());
+      }
+    }
+    window.searchCurrentQuery = searchCurrentQuery;
+
+    // ==========================================
+    // 9. EVENT LISTENERS & INITIALIZATION
+    // ==========================================
+    function setupEventListeners() {
+      // Preset button
+      const presetBtn = document.getElementById('presetBtn');
+      const presetMenu = document.getElementById('presetMenu');
+      if (presetBtn && presetMenu) {
+        presetBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          presetMenu.classList.toggle('hidden');
+        });
+        document.addEventListener('click', () => {
+          presetMenu.classList.add('hidden');
+        });
+      }
+
+      // Geolocation button
+      const locateBtn = document.getElementById('locateBtn');
+      if (locateBtn) {
+        locateBtn.addEventListener('click', () => {
+          if (navigator.geolocation) {
+            showLoading(true);
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                activeLat = pos.coords.latitude;
+                activeLng = pos.coords.longitude;
+                map.setView([activeLat, activeLng], 13);
+                currentMarker.setLatLng([activeLat, activeLng]);
+                fetchFishingData(activeLat, activeLng);
+              },
+              (err) => {
+                showLoading(false);
+                alert('Δεν ήταν δυνατός ο εντοπισμός GPS. Χρησιμοποιήστε το χάρτη.');
+              },
+              { timeout: 10000, enableHighAccuracy: true }
+            );
+          }
+        });
+      }
+
+      // Search button and Enter key
+      const searchInput = document.getElementById('searchInput');
+      const searchBtn = document.getElementById('searchBtn');
+      if (searchBtn && searchInput) {
+        searchBtn.addEventListener('click', searchCurrentQuery);
+        searchInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') searchCurrentQuery();
+        });
+      }
+
+      // Info modal
+      const infoBtn = document.getElementById('infoBtn');
+      const infoModal = document.getElementById('infoModal');
+      const closeInfoBtn = document.getElementById('closeInfoBtn');
+      if (infoBtn && infoModal && closeInfoBtn) {
+        infoBtn.addEventListener('click', () => infoModal.classList.remove('hidden'));
+        closeInfoBtn.addEventListener('click', () => infoModal.classList.add('hidden'));
+        infoModal.addEventListener('click', (e) => {
+          if (e.target === infoModal) infoModal.classList.add('hidden');
+        });
+      }
+    }
+
+    function initApp() {
+      if (window.lucide) lucide.createIcons();
+      initMap();
+      setupEventListeners();
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initApp);
+    } else {
+      initApp();
+    }
+  </script>
+</body>
+</html>
